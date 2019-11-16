@@ -8,14 +8,13 @@ console.log(chalk.bgBlack.green.bold(figlet.textSync('  A.L.D.O.  ', {
 })));
 console.log(chalk.bgBlack.green.bold("\t\t\t  ANDROIDE LANCUSANO DIFFICILMENTE OBBEDIENTE  \n"));
 /*---------------------------------------*/
-/*const Lookup = require("node-yeelight-wifi").Lookup;
-let look = new Lookup();
-look.on("detected", (light) => {
-    console.log(chalk.green.bold("LIGHT FOUND. I'M READY, LET'S DO THIS!\n\n"));
-    mainTest(light);
-});*/
+const Lookup = require("node-yeelight-wifi").Lookup;
+var look = new Lookup();
+var light = undefined;
 /*----*/
 const { withHermes } = require('hermes-javascript');
+const { Enums } = require('hermes-javascript/types')
+
 /*----*/
 const https = require('https');
 var url = '';
@@ -29,22 +28,20 @@ let parser = new Parser();
 /*----*/
 var Player = require('player');
 var player;
+/*----*/
 
 mainTest();
 
-function mainTest(/*light*/) {
+function mainTest() {
     withHermes(hermes => {
 
-        const dialog = hermes.dialog()
+        look.on("detected", (bulbFound) => {
+            console.log(chalk.green.bold("LIGHT FOUND. I'M READY, LET'S DO THIS!\n\n"));
+            light = bulbFound;
+        });
 
-        /*------------------STAI-ZITTO-------------------*/
-        dialog.on('intent/YantCaccia:stopNews', (msg) => {
-            stopPlaying();
-            dialog.publish('end_session', {
-                sessionId: msg.sessionId,
-            })
-        })
-        /*-----------------------------------------------*/
+        const dialog = hermes.dialog();
+
         /*-----------------GESTIONE-METEO----------------*/
         dialog.on('intent/YantCaccia:getForecast', (msg) => {
             console.log(chalk.green.bold(msg.input.toUpperCase()));
@@ -53,7 +50,7 @@ function mainTest(/*light*/) {
             if (quando != undefined) quando = quando.value.value;
             else quando = 'oggi';
 
-            switch (quando) {//non so se funziona se è undefined: da provare
+            switch (quando) {
                 case "oggi": quando = 0;
                     break;
                 case "domani": quando = 1;
@@ -66,11 +63,7 @@ function mainTest(/*light*/) {
             if (city != undefined) city = city.value.value;
             else city = 'Napoli';
 
-            //var latitude, longitude;
             var data = '';
-
-            //if (msg.slots[0] == undefined) { city = "Napoli"; }
-            //else { city = msg.slots[0].value.value; }
 
             geocoder.geocode(city, function (err, res) {
                 if (res == undefined) return;
@@ -86,7 +79,7 @@ function mainTest(/*light*/) {
                         console.log(chalk.green.bold("> " + data.daily.data[quando].summary) + "\n");
                         dialog.publish('end_session', {
                             sessionId: msg.sessionId,
-                            text: JSON.stringify(data.daily.summary)
+                            text: JSON.stringify(data.daily.data[quando].summary)
                         })
                     });
                 })
@@ -97,102 +90,195 @@ function mainTest(/*light*/) {
         /*------------------------NEWS-PROVIDER--------------------------*/
         dialog.on('intent/YantCaccia:getNews', (msg) => {
             let response = "Ok, ecco le ultime notizie";
+
             console.log(chalk.green.bold(msg.input.toUpperCase()));
             console.log(chalk.green.bold("> " + response + "\n"));
             (async () => {
                 let feed = await parser.parseURL('http://cache.sky.it/google-home-assistant/tg24-last-news.xml');
                 var url = feed.items[0].enclosure.url;
-                player = new Player(url);
-                player.play();
-
+                playSound(url);
             })();
+
             dialog.publish('end_session', {
-                sessionId: msg.sessionId,
+                sessionId: msg.sessionId
             })
         })
         /*---------------------------------------------------------------*/
 
         /*-----------------------GESTIONE-LUCI---------------------------*/
+
         dialog.on('intent/YantCaccia:Spegnere', (msg) => {
-            let response = "Ok, spengo la luce";
-            console.log(chalk.green.bold(msg.input.toUpperCase()));
-            light.setPower(false);
-            console.log(chalk.green.bold("> " + response + "\n"));
-            dialog.publish('end_session', {
-                sessionId: msg.sessionId,
-                text: response
-            })
+
+            if (light == undefined) {
+                lightError(dialog, msg);
+                return;
+            }
+
+            testLight().then(function (flag) {
+                if (!flag) {
+                    lightError(dialog, msg);
+                    return;
+                }
+
+                let response = "Ok, spengo la luce";
+                console.log(chalk.green.bold(msg.input.toUpperCase()));
+                light.setPower(false);
+                console.log(chalk.green.bold("> " + response + "\n"));
+                dialog.publish('end_session', {
+                    sessionId: msg.sessionId,
+                    text: response
+                })
+            });
         })
 
         dialog.on('intent/YantCaccia:Accendere', (msg) => {
-            let response = "Ok, accendo la luce";
-            console.log(chalk.green.bold(msg.input.toUpperCase()));
-            light.setPower(true);
-            console.log(chalk.green.bold("> " + response + "\n"));
-            dialog.publish('end_session', {
-                sessionId: msg.sessionId,
-                text: response
-            })
+
+            if (light == undefined) {
+                lightError(dialog, msg);
+                return;
+            }
+
+            testLight().then(function (flag) {
+                if (!flag) {
+                    lightError(dialog, msg);
+                    return;
+                }
+                let response = "Ok, accendo la luce";
+                console.log(chalk.green.bold(msg.input.toUpperCase()));
+                light.setPower(true);
+                console.log(chalk.green.bold("> " + response + "\n"));
+                dialog.publish('end_session', {
+                    sessionId: msg.sessionId,
+                    text: response
+                })
+            });
         })
 
         dialog.on('intent/YantCaccia:Alzare', (msg) => {
-            let response = "Ok, aumento la luminosità della luce";
-            console.log(chalk.green.bold(msg.input.toUpperCase()));
-            light.setBright(light.bright + 15);
-            console.log(chalk.green.bold("> " + response + "\n"));
-            dialog.publish('end_session', {
-                sessionId: msg.sessionId,
-                text: response
-            })
+
+            if (light == undefined) {
+                lightError(dialog, msg);
+                return;
+            }
+
+            testLight().then(function (flag) {
+                if (!flag) {
+                    lightError(dialog, msg);
+                    return;
+                }
+                let response = "Ok, aumento la luminosità della luce";
+                console.log(chalk.green.bold(msg.input.toUpperCase()));
+                light.setBright(light.bright + 30);
+                console.log(chalk.green.bold("> " + response + "\n"));
+                dialog.publish('end_session', {
+                    sessionId: msg.sessionId,
+                    text: response
+                })
+            });
         })
 
         dialog.on('intent/YantCaccia:Abbassare', (msg) => {
-            let response = "Ok, abbasso la luminosità della luce";
-            console.log(chalk.green.bold(msg.input.toUpperCase()));
-            light.setBright(light.bright - 15);
-            console.log(chalk.green.bold("> " + response + "\n"));
-            dialog.publish('end_session', {
-                sessionId: msg.sessionId,
-                text: response
-            })
+
+            if (light == undefined) {
+                lightError(dialog, msg);
+                return;
+            }
+
+            testLight().then(function (flag) {
+                if (!flag) {
+                    lightError(dialog, msg);
+                    return;
+                }
+                let response = "Ok, abbasso la luminosità della luce";
+                console.log(chalk.green.bold(msg.input.toUpperCase()));
+                light.setBright(light.bright - 30);
+                console.log(chalk.green.bold("> " + response + "\n"));
+                dialog.publish('end_session', {
+                    sessionId: msg.sessionId,
+                    text: response
+                })
+            });
         })
 
         dialog.on('intent/YantCaccia:Colore', (msg) => {
-            let response = "Okay, cambio il colore della luce";
-            /*------COLORI-----*/
-            let rgb;
-            if (msg.slots[0].rawValue == 'rosso' || msg.slots[0].rawValue == 'rossa') rgb = [255, 0, 0];
-            if (msg.slots[0].rawValue == 'verde') rgb = [0, 255, 0];
-            if (msg.slots[0].rawValue == 'blu') rgb = [0, 0, 255];
-            if (msg.slots[0].rawValue == 'arancio' || msg.slots[0].rawValue == 'arancione') rgb = [240, 120, 0];
-            if (msg.slots[0].rawValue == 'bianco' || msg.slots[0].rawValue == 'bianca') rgb = [240, 240, 240];
-            if (msg.slots[0].rawValue == 'gialla' || msg.slots[0].rawValue == 'giallo') rgb = [250, 210, 0];
-            /*-----------------*/
-            console.log(chalk.green.bold(msg.input.toUpperCase()));
-            light.setRGB(rgb);
-            console.log(chalk.green.bold("> " + response + "\n"));
-            dialog.publish('end_session', {
-                sessionId: msg.sessionId,
-                text: response
-            })
+
+            if (light == undefined) {
+                lightError(dialog, msg);
+                return;
+            }
+
+            testLight().then(function (flag) {
+                if (!flag) {
+                    lightError(dialog, msg);
+                    return;
+                }
+                let response = "Okay, cambio il colore della luce";
+
+                if (msg.slots[0] == undefined) {
+                    dialog.publish('end_session', {
+                        sessionId: msg.sessionId,
+                        text: "Mi dispiace, non ho capito."
+                    })
+                    return;
+                }//err management
+
+                /*------COLORI-----*/
+                let rgb;
+                if (msg.slots[0].rawValue == 'rosso' || msg.slots[0].rawValue == 'rossa') rgb = [255, 0, 0];
+                if (msg.slots[0].rawValue == 'verde') rgb = [0, 255, 0];
+                if (msg.slots[0].rawValue == 'blu') rgb = [0, 0, 255];
+                if (msg.slots[0].rawValue == 'arancio' || msg.slots[0].rawValue == 'arancione') rgb = [240, 120, 0];
+                if (msg.slots[0].rawValue == 'bianco' || msg.slots[0].rawValue == 'bianca') rgb = [240, 240, 240];
+                if (msg.slots[0].rawValue == 'gialla' || msg.slots[0].rawValue == 'giallo') rgb = [250, 210, 0];
+                /*-----------------*/
+                console.log(chalk.green.bold(msg.input.toUpperCase()));
+                light.setRGB(rgb);
+                console.log(chalk.green.bold("> " + response + "\n"));
+                dialog.publish('end_session', {
+                    sessionId: msg.sessionId,
+                    text: response
+                })
+            });
         })
         /*--------------------------------------------------------------*/
         /*--------------------------TIMER-------------------------------*/
         dialog.on('intent/YantCaccia:setTimer', (msg) => {
-            var numero, secondi = 1;
-            if (msg.slots[0].slotName == "numero") numero = msg.slots[0].value.value;
-            //toDo: error management
 
-            if (msg.slots[1].value.value == "secondi") secondi = 1;
-            else if (msg.slots[1].value.value == "minuti" || msg.slots[1].value.value == "minuto") secondi = 60;
-            else if (msg.slots[1].value.value == 'ora' || msg.slots[1].value.value == 'ore') secondi = 3600;
+            var tipo = msg.slots.find(slot => slot.slotName == 'tipo');
+            var numero = msg.slots.find(slot => slot.slotName == 'numero');
 
-            var s = numero * secondi;
-            console.log("Secondi effettivi: " + s);
+            if (tipo == undefined || numero == undefined) {
+                dialog.publish('end_session', {
+                    sessionId: msg.sessionId,
+                    text: "Mi dispiace, non ho capito."
+                })
+                return;
+            } //error management done RIGHT (sort of..)
 
-            let response = "Okay, imposto il timer per " + msg.slots[0].value.value + " " + msg.slots[1].value.value;
+            var secondi = 1;
+            numero = numero.value.value;
+            tipo = tipo.value.value;
 
-            setTimeout(playTimer, s);
+            switch (tipo) {
+                case "secondi": secondi = 1;
+                    break;
+                case "minuti": secondi = 60;
+                    break;
+                case "minuto": secondi = 60;
+                    break;
+                case "ora": secondi = 3600;
+                    break;
+                case "ore": secondi = 3600;
+                    break;
+                default: secondi = 1;
+            }
+
+            var s = numero * secondi * 1000;
+            console.log("Millisecondi effettivi: " + s);
+
+            let response = "Okay, imposto il timer per " + numero + " " + tipo;
+
+            setTimeout(playSound, s, "./alarm.mp3"); //setTimeout has a strange way to pass parameter
 
             console.log(chalk.green.bold(msg.input.toUpperCase()));
 
@@ -225,14 +311,41 @@ function mainTest(/*light*/) {
             })
         })
         /*--------------------------------------------------------------*/
+        /*-----------------------STAI-ZITTO-----------------------------*/
+        dialog.on('intent/YantCaccia:stopNews', (msg) => {
+            stopPlaying();
+            dialog.publish('end_session', {
+                sessionId: msg.sessionId,
+            })
+        })
+        /*--------------------------------------------------------------*/
     })
 
 }
 
-function playTimer() {
-    player = new Player('./alarm.mp3').play();
+function playSound(source) {
+    player = new Player(source).play();
+    player.on('error', function (err) {/* Do nothing but needed to catch the error ('no next song found') */ });
 }
 
 function stopPlaying() {
     player.stop();
+}
+
+function testLight() {
+
+    return light.updateState().then(() => {
+        return true;
+    }).catch((error => {
+        look = new Lookup();
+        return false;
+    }));
+
+}
+
+function lightError(dialog, msg) {
+    dialog.publish('end_session', {
+        sessionId: msg.sessionId,
+        text: "Mi dispiace, c'è un problema con le luci"
+    })
 }
