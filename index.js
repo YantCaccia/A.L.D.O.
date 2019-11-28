@@ -42,6 +42,22 @@ function mainTest() {
 
         const dialog = hermes.dialog();
 
+        /*--------------------ORARIO---------------------*/
+        dialog.on('intent/YantCaccia:getTime', (msg) => {
+
+	    let today = new Date();
+            let ore = today.getHours();
+            let minuti = today.getMinutes();
+            
+	    let response = "Sono le " + ore + " e " + minuti;
+
+            dialog.publish('end_session', {
+                sessionId: msg.sessionId,
+                text: response
+            })
+        })
+        /*------------------------------------------------*/
+
         /*-----------------GESTIONE-METEO----------------*/
         dialog.on('intent/YantCaccia:getForecast', (msg) => {
             console.log(chalk.green.bold(msg.input.toUpperCase()));
@@ -329,8 +345,10 @@ function playSound(source) {
 }
 
 function stopPlaying() {
-    player.stop();
-}
+	if(player!=undefined){
+    		player.stop();
+	}
+}	
 
 function testLight() {
 
